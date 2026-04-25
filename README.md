@@ -12,6 +12,15 @@ for unsupervised and supervised integration, using real public datasets bundled 
 | 1 | **MOFA+** (unsupervised) | CLL — `MOFA2::CLL_data` | What molecular signatures across DNA methylation, RNA-seq, and drug response explain CLL patient heterogeneity and treatment response? |
 | 2 | **DIABLO** (supervised) | breast.TCGA — `mixOmics::breast.TCGA` | What minimal multi-omics biomarker panel best discriminates PAM50 breast cancer subtypes? |
 
+> **On dataset choice:** `CLL_data` and `breast.TCGA` are the canonical tutorial
+> datasets from the official MOFA2 and mixOmics package vignettes respectively.
+> They are used here deliberately — the biology is well-characterised, results
+> are verifiable against published benchmarks (Argelaguet et al. 2020; Singh et al. 2019),
+> and they allow the focus to remain on methodology and reproducibility rather than
+> data wrangling. The repo goes beyond the vignettes in its reproducibility stack
+> (Docker, conda, papermill, CI), biological commentary, and direct comparison of
+> the two methods as complementary tools.
+
 ---
 
 ## Repository Structure
