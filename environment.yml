@@ -1,0 +1,67 @@
+name: multiomics-demo
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # ── R runtime ────────────────────────────────────────────────────────────────
+  # NOTE: Bioconductor packages (MOFA2, MOFAdata, mixOmics, BiocParallel)
+  # are NOT installed here because bioconda does not ship pre-compiled ARM
+  # binaries for all of them. They are installed by setup.R via BiocManager,
+  # which builds from source and handles all dependencies correctly.
+  - r-base=4.3
+  - r-biocmanager
+
+  # ── R: CRAN packages ─────────────────────────────────────────────────────────
+  - r-rmarkdown
+  - r-knitr
+  - r-ggplot2
+  - r-dplyr
+  - r-tidyr
+  - r-purrr
+  - r-stringr
+  - r-tibble
+  - r-readr
+  - r-pheatmap
+  - r-ggrepel
+  - r-viridis
+  - r-cowplot
+  - r-patchwork
+  - r-corrplot
+  - r-rcolorbrewer
+  - r-scales
+  - r-reshape2
+  - r-reticulate
+  - r-irkernel          # R kernel for Jupyter notebooks
+
+  # ── C++-heavy deps: install via conda to avoid source-build failures ─────────
+  # BiocManager cannot reliably compile these on ARM macOS; conda-forge ships
+  # pre-built ARM binaries. MOFA2 and mixOmics depend on all of these.
+  - r-igraph
+  - r-rcppeigen
+  - r-rtsne
+  - r-uwot
+  - r-sitmo
+  - r-rcppannoy
+  - r-rspectra
+  - r-dqrng
+  - r-rarpack
+  - r-data.table         # required by fgsea; also used for fast data manipulation
+  - r-psych              # required by MOFA2::correlate_factors_with_covariates
+
+  # NOTE: fgsea (Bioconductor) requires R >= 4.4 via bioconda and fails to
+  # compile from source on R 4.3 due to incompatible BH/Rcpp headers.
+  # The notebooks handle this gracefully (requireNamespace guard).
+
+  # ── Jupyter ───────────────────────────────────────────────────────────────────
+  - jupyterlab          # notebook UI
+  - nb_conda_kernels    # auto-discovers conda env kernels in JupyterLab
+  - jupytext            # used for .Rmd → .ipynb conversion (can remove after)
+
+  # ── Python: mofapy2 backend ───────────────────────────────────────────────────
+  - python=3.11
+  - pip
+  - pip:
+    - mofapy2
+    - h5py
+    - papermill        # batch notebook execution: papermill in.ipynb out.ipynb

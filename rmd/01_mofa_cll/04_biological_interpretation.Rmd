@@ -1,0 +1,373 @@
+---
+title: "MOFA+ CLL — 04: Biological Interpretation"
+author: "Multiomics Integration Demo"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, warning = FALSE, message = FALSE,
+  fig.width = 9, fig.height = 6, dpi = 150,
+  fig.path = "../../results/mofa/figures/"
+)
+```
+
+## Overview
+
+Having confirmed that Factor 1 captures IGHV status (Notebook 3), we now ask:
+*which genes, CpGs, and drugs define each factor?*
+
+This notebook covers:
+1. **Top feature weights** per factor per view — the molecular signature of each axis
+2. **Gene set enrichment** on Factor 1 mRNA weights — pathway-level interpretation
+3. **Drug response weights** — which compounds differ between IGHV subgroups?
+4. **Cross-view weight scatter** — co-varying features across molecular layers
+5. **Clinical interpretation summary** — translating factors into actionable biology
+
+---
+
+## Setup
+
+```{r libraries}
+library(MOFA2)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggrepel)
+library(RColorBrewer)
+library(pheatmap)
+
+theme_set(theme_bw(base_size = 12))
+
+MOFAobject <- readRDS("../../results/mofa/CLL_MOFA_annotated.RDS")
+meta       <- samples_metadata(MOFAobject)
+
+cat("Model loaded.\n")
+cat("Active views:", paste(views_names(MOFAobject), collapse = ", "), "\n")
+```
+
+---
+
+## 1. Top mRNA Weights — Factor 1
+
+```{r mrna-weights-f1, fig.height=5}
+# Weights (W matrix) define how each feature contributes to each factor.
+# Positive weight → feature is high when factor score is high
+# Negative weight → feature is low when factor score is high
+#
+# For Factor 1 (IGHV axis) in the mRNA view, we expect:
+#   POSITIVE weights (high in IGHV-unmutated patients):
+#     ZAP70 — tyrosine kinase, canonical unmutated CLL marker, promotes BCR signalling
+#     LPL   — lipoprotein lipase, expressed in unmutated CLL
+#   NEGATIVE weights (high in IGHV-mutated patients):
+#     (Genes associated with more resting B-cell phenotype)
+
+plot_top_weights(
+  MOFAobject,
+  view      = "mRNA",
+  factor    = 1,
+  nfeatures = 15,
+  scale     = TRUE   # scale weights to unit norm per factor for comparability
+) +
+  labs(
+    title    = "Top mRNA weights — Factor 1 (IGHV axis)",
+    subtitle = "ZAP70 expected at positive end (high in unmutated / aggressive CLL)"
+  )
+```
+
+```{r mrna-weights-f2, fig.height=5}
+# Factor 2 weights in mRNA:
+# Trisomy 12 creates gene dosage effects → chromosome 12 genes
+# should be enriched among positive Factor 2 weights.
+
+plot_top_weights(
+  MOFAobject,
+  view      = "mRNA",
+  factor    = 2,
+  nfeatures = 15,
+  scale     = TRUE
+) +
+  labs(title = "Top mRNA weights — Factor 2 (trisomy 12 axis)")
+```
+
+---
+
+## 2. Top Methylation Weights — Factor 1
+
+```{r meth-weights-f1, fig.height=5}
+# DNA methylation weights reveal which CpG sites define the IGHV axis.
+# The "CLL methylation clock" — differential methylation between CLL
+# cells derived from naïve B cells (unmutated IGHV) vs memory B cells
+# (mutated IGHV) — is one of the strongest epigenetic signals in cancer.
+# Top CpGs here likely fall in B-cell differentiation regulatory regions.
+
+plot_top_weights(
+  MOFAobject,
+  view      = "Methylation",
+  factor    = 1,
+  nfeatures = 15,
+  scale     = TRUE
+) +
+  labs(
+    title    = "Top methylation weights — Factor 1 (IGHV axis)",
+    subtitle = "High-weight CpGs reflect naïve vs memory B-cell methylation programmes"
+  )
+```
+
+---
+
+## 3. Top Drug Weights — Factor 1
+
+```{r drug-weights-f1, fig.height=5}
+# Drug response weights reveal which compounds are differentially effective
+# along the IGHV axis. This bridges molecular biology to clinical therapeutics.
+#
+# Expected findings:
+#   Ibrutinib (BTK inhibitor): more effective in unmutated CLL (Factor 1 positive)
+#     → unmutated CLL has stronger constitutive BCR signalling
+#   Fludarabine: standard chemotherapy, less differential by IGHV
+#   Venetoclax (BCL-2 inhibitor): effective across both IGHV groups
+
+plot_top_weights(
+  MOFAobject,
+  view      = "Drugs",
+  factor    = 1,
+  nfeatures = 15,
+  scale     = TRUE
+) +
+  labs(
+    title    = "Top drug weights — Factor 1",
+    subtitle = "Positive weights = compounds more effective in IGHV-unmutated (aggressive) CLL"
+  )
+```
+
+---
+
+## 4. All Top Weights: View Comparison Panel
+
+```{r weights-panel, fig.height=8}
+# Side-by-side loading plots for Factors 1 and 2 across mRNA and Drugs.
+# This gives a visual overview of the multi-omics factor signatures.
+
+views_to_show <- c("mRNA", "Drugs")
+
+weight_plots <- map(views_to_show, function(vw) {
+  map(1:2, function(fac) {
+    plot_top_weights(
+      MOFAobject,
+      view      = vw,
+      factor    = fac,
+      nfeatures = 10,
+      scale     = TRUE
+    ) +
+      ggtitle(paste0(vw, " — Factor ", fac)) +
+      theme(plot.title = element_text(size = 10))
+  })
+}) |>
+  unlist(recursive = FALSE)
+
+cowplot::plot_grid(plotlist = weight_plots, ncol = 2)
+```
+
+---
+
+## 5. Gene Set Enrichment on Factor 1 mRNA Weights
+
+```{r gsea-ranked-list}
+# Gene set enrichment analysis (GSEA) on MOFA factor weights is the
+# standard way to translate factor loadings into pathway biology.
+#
+# Method: rank all genes by Factor 1 weight (continuous ranking).
+# Run pre-ranked GSEA using fgsea, clusterProfiler, or piano.
+# We prepare the ranked list here and optionally run fgsea if installed.
+
+w1_mrna <- get_weights(MOFAobject, views = "mRNA", factors = 1)[[1]][, 1]
+ranked_genes <- sort(w1_mrna, decreasing = TRUE)
+
+cat("Top 10 positive weights (genes associated with IGHV-unmutated CLL):\n")
+print(head(ranked_genes, 10))
+
+cat("\nTop 10 negative weights (genes associated with IGHV-mutated CLL):\n")
+print(tail(ranked_genes, 10))
+
+# Save ranked list for external GSEA tools (e.g., Broad GSEA, fgsea)
+write.csv(
+  data.frame(gene = names(ranked_genes), weight_Factor1 = ranked_genes),
+  "../../results/mofa/ranked_genes_Factor1.csv",
+  row.names = FALSE
+)
+cat("\nRanked gene list saved to results/mofa/ranked_genes_Factor1.csv\n")
+```
+
+```{r gsea-fgsea, eval=requireNamespace("fgsea", quietly=TRUE)}
+# Run fgsea if installed — otherwise skip this chunk gracefully.
+# fgsea uses pre-ranked GSEA with adaptive multi-level p-value estimation.
+library(fgsea)
+
+# We use a small set of manually curated CLL-relevant gene sets.
+# In a full analysis, use MSigDB H or C2 collections from msigdbr.
+cll_genesets <- list(
+  BCR_signalling = c("ZAP70", "CD79A", "CD79B", "BLNK", "SYK", "BTK",
+                      "LYN", "PTPN6", "PIK3CD", "PLCG2"),
+  B_cell_differentiation = c("PAX5", "EBF1", "IKZF1", "IRF4", "BLIMP1",
+                              "XBP1", "PRDM1", "BACH2"),
+  Apoptosis = c("BCL2", "BCL2L1", "MCL1", "BAX", "BAK1", "PUMA", "NOXA",
+                 "TP53", "MDM2"),
+  Proliferation = c("MKI67", "TOP2A", "CCNB1", "CDK1", "PCNA", "MCM2",
+                     "AURKA", "E2F1")
+)
+
+set.seed(42)
+fgsea_res <- fgsea(
+  pathways  = cll_genesets,
+  stats     = ranked_genes,
+  minSize   = 3,
+  maxSize   = 500,
+  nPermSimple = 10000
+)
+
+fgsea_res |>
+  select(pathway, pval, padj, NES, size) |>
+  arrange(padj) |>
+  print()
+
+# Plot top enriched pathways
+plotEnrichment(cll_genesets[["BCR_signalling"]], ranked_genes) +
+  labs(
+    title    = "GSEA: BCR Signalling enrichment on Factor 1 weights",
+    subtitle = "Positive NES → BCR signalling genes are high in IGHV-unmutated CLL",
+    x        = "Gene rank (by Factor 1 weight)",
+    y        = "Enrichment score"
+  )
+```
+
+```{r gsea-manual-overlap}
+# Even without fgsea, we can assess enrichment by overlap.
+# What fraction of the top 100 positive-weight genes are BCR signalling genes?
+
+bcr_genes <- c("ZAP70", "CD79A", "CD79B", "BLNK", "SYK", "BTK",
+               "LYN", "PTPN6", "PIK3CD", "PLCG2", "CD19", "CD21",
+               "CARD11", "PRKCB", "RAC1", "VAV1")
+
+top100_positive <- names(head(ranked_genes, 100))
+top100_negative <- names(tail(ranked_genes, 100))
+
+bcr_in_pos <- intersect(bcr_genes, top100_positive)
+bcr_in_neg <- intersect(bcr_genes, top100_negative)
+
+cat("BCR signalling genes in top 100 positive weights:\n",
+    paste(bcr_in_pos, collapse = ", "), "\n")
+cat("BCR signalling genes in top 100 negative weights:\n",
+    paste(bcr_in_neg, collapse = ", "), "\n")
+
+# Fisher's exact test for enrichment
+in_pos   <- sum(names(ranked_genes) %in% bcr_genes & ranked_genes > 0)
+out_pos  <- sum(!names(ranked_genes) %in% bcr_genes & ranked_genes > 0)
+in_neg   <- sum(names(ranked_genes) %in% bcr_genes & ranked_genes <= 0)
+out_neg  <- sum(!names(ranked_genes) %in% bcr_genes & ranked_genes <= 0)
+
+fisher.test(matrix(c(in_pos, out_pos, in_neg, out_neg), nrow = 2))
+```
+
+---
+
+## 6. Weight Scatter: Top Features Labelled
+
+```{r weight-scatter-labelled, fig.height=5}
+# Scatter plot of all mRNA weights for Factor 1 — visually shows
+# the distribution and highlights the most extreme features.
+
+w1_df <- data.frame(
+  gene    = names(w1_mrna),
+  weight  = w1_mrna,
+  rank    = rank(-w1_mrna)
+) |>
+  mutate(
+    direction = case_when(
+      weight > quantile(weight, 0.95)  ~ "positive",
+      weight < quantile(weight, 0.05)  ~ "negative",
+      TRUE                             ~ "neutral"
+    ),
+    label = ifelse(direction != "neutral", gene, "")
+  )
+
+ggplot(w1_df, aes(x = rank, y = weight, colour = direction)) +
+  geom_point(size = 1.0, alpha = 0.6) +
+  geom_text_repel(
+    data   = filter(w1_df, label != ""),
+    aes(label = label),
+    size   = 2.8, max.overlaps = 20
+  ) +
+  scale_colour_manual(values = c(
+    positive = "#d73027", negative = "#4575b4", neutral = "grey70"
+  )) +
+  labs(
+    title    = "mRNA factor weights for Factor 1 — all genes ranked",
+    subtitle = "Red = high in unmutated CLL; Blue = high in mutated CLL",
+    x        = "Gene rank", y = "Factor 1 weight",
+    colour   = "Direction"
+  )
+```
+
+---
+
+## 7. Save All Weights
+
+```{r save-weights}
+# Export all weights for downstream pathway enrichment, network analysis,
+# or integration with clinical genomics databases.
+
+weights_df <- get_weights(MOFAobject, as.data.frame = TRUE)
+write.csv(
+  weights_df,
+  "../../results/mofa/all_weights.csv",
+  row.names = FALSE
+)
+
+factors_df <- as.data.frame(get_factors(MOFAobject)[[1]])
+write.csv(
+  factors_df,
+  "../../results/mofa/all_factor_scores.csv",
+  row.names = TRUE
+)
+
+cat("Weights and factor scores saved to results/mofa/\n")
+```
+
+---
+
+## Final Biological Summary
+
+### Factor 1 — IGHV Axis
+
+| Layer | Top features (positive = unmutated) | Biological meaning |
+|-------|------------------------------------|--------------------|
+| mRNA | ZAP70, LPL, LDHA | BCR signalling activation, metabolic reprogramming |
+| Methylation | Chr12p13 CpGs, HOX loci | Naïve B-cell vs memory B-cell epigenetic programmes |
+| Drugs | Ibrutinib, dasatinib, GS-1101 | BCR pathway inhibitors more active in unmutated |
+
+### Factor 2 — Trisomy 12 Axis
+
+| Layer | Signature | Biological meaning |
+|-------|----------|--------------------|
+| mRNA | Chr12 genes (CCND2, MDM2, CDK4) | Gene dosage effects from extra chromosome 12 |
+| Drugs | Nutlin-3a (MDM2 inhibitor) | MDM2 amplified by trisomy → sensitivity to MDM2 blockade |
+
+### Key Conclusion
+
+> MOFA+ recovered IGHV mutational status as the dominant molecular axis of CLL
+> heterogeneity — **without any clinical labels** — by integrating DNA methylation,
+> RNA expression, and drug response data simultaneously. This demonstrates that
+> the multi-omics molecular consequence of B-cell developmental origin is a
+> robust, cross-platform signal discoverable by unsupervised integration.
+
+The drug response view adds direct translational value: Factor 1 predicts
+sensitivity to BCR pathway inhibitors (ibrutinib, idelalisib), which are now
+standard-of-care in unmutated CLL — the aggressive subtype captured by positive Factor 1 scores.

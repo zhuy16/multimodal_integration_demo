@@ -1,0 +1,37 @@
+# R
+.Rhistory
+.Rapp.history
+.RData
+.Rproj.user/
+*.Rproj
+# renv/ is not used — conda + environment.yml is the package manager.
+# renv.lock is kept as a reference document only (manually maintained).
+renv/
+*.nb.html
+
+# R Markdown rendered outputs (regenerate from source)
+analyses/**/*.html
+analyses/**/*.pdf
+
+# Large model/result files — use DVC or similar for these
+results/**/*.hdf5
+results/**/*.RDS
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+
+# Conda
+.conda/

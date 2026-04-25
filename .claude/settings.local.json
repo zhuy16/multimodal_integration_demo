@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Rscript:*)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(command -v R)",
+      "Bash(conda run -n multiomics-demo which Rscript)",
+      "Bash(conda run -n r-base which Rscript)",
+      "Bash(conda env:*)",
+      "Bash(conda run:*)",
+      "Bash(conda search:*)"
+    ]
+  }
+}

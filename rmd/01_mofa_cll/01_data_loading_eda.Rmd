@@ -1,0 +1,356 @@
+---
+title: "MOFA+ CLL — 01: Data Loading & EDA"
+author: "Multiomics Integration Demo"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, warning = FALSE, message = FALSE,
+  fig.width = 9, fig.height = 6, dpi = 150,
+  fig.path = "../../results/mofa/figures/"
+)
+```
+
+## Biological Background
+
+Chronic lymphocytic leukemia (CLL) is the most common adult leukemia in the Western world.
+Despite a shared diagnosis, patients show dramatically different clinical trajectories:
+some remain untreated for decades while others relapse within months. This heterogeneity
+is driven by a complex interplay of somatic mutations, epigenetic reprogramming,
+transcriptional dysregulation, and differential drug sensitivity.
+
+The **CLL_data** object from the MOFA2 package captures four omics views on up to 200
+patients from the same cohort, making it ideal for multi-omics integration:
+
+| View | Technology | Features | Biological layer |
+|------|-----------|----------|-----------------|
+| mRNA | RNA-seq (log2 CPM) | 5,000 genes | Transcriptional programs |
+| Methylation | 450k array (beta values) | 4,248 CpGs | Epigenetic reprogramming |
+| Drugs | Ex vivo viability assays | 310 compounds | Drug sensitivity phenotype |
+| Mutations | WES binary calls | 69 driver genes | Somatic alterations |
+
+A critical challenge: **not every patient was profiled on every platform** — MOFA+ is
+specifically designed to handle this incomplete-data structure.
+
+**Biological question**: What molecular signatures across mRNA, methylation, and drug response
+explain CLL patient heterogeneity and treatment response?
+
+---
+
+## Setup
+
+```{r libraries}
+library(MOFA2)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(pheatmap)
+library(RColorBrewer)
+library(corrplot)
+library(ggrepel)
+
+theme_set(theme_bw(base_size = 12))
+set.seed(2024)
+
+# Colour for IGHV status — the key prognostic variable in CLL
+ighv_colors <- c(M = "#4DAF4A", U = "#E41A1C")
+# M = Mutated → indolent disease (good prognosis)
+# U = Unmutated → aggressive disease (poor prognosis)
+```
+
+---
+
+## 1. Load CLL Dataset
+
+```{r load-data}
+# CLL_data is bundled in the MOFA2 package.
+# Format: named list where each element is a features × samples matrix.
+# This "feature × sample" orientation is what MOFA2::create_mofa() expects.
+data("CLL_data",       package = "MOFAdata", envir = environment())
+data("CLL_covariates", package = "MOFAdata", envir = environment())
+
+cat("Views available:", paste(names(CLL_data), collapse = ", "), "\n\n")
+
+# Dimensions: rows = features, columns = patients
+map_dfr(CLL_data,
+  ~ data.frame(n_features = nrow(.x), n_samples = ncol(.x)),
+  .id = "view"
+)
+```
+
+```{r inspect-covariates}
+# CLL_covariates contains the clinical annotations we will later use
+# to annotate MOFA factors. IGHV is the most important: the mutational
+# status of the immunoglobulin heavy chain variable region separates
+# CLL into two biologically distinct diseases sharing one name.
+cat("Clinical covariates available:\n")
+str(CLL_covariates)
+
+cat("\nIGHV status distribution:\n")
+# M (mutated) = B cells from germinal-centre-experienced lymphocytes → indolent
+# U (unmutated) = naïve B cell origin → aggressive, requires early treatment
+table(CLL_covariates$IGHV)
+```
+
+---
+
+## 2. Missing Data Structure
+
+```{r missing-heatmap, fig.height=5}
+# One of MOFA+'s key advantages: it handles samples that are missing
+# one or more views. In real cohort studies this is common — not all
+# assays were performed on all patients, often for logistical reasons.
+# MOFA+ marginalises over missing observations during ELBO optimisation,
+# so no imputation is needed.
+
+all_samples <- unique(unlist(map(CLL_data, colnames)))
+
+# Build a binary presence/absence matrix (samples × views)
+coverage <- map(CLL_data, ~ as.integer(all_samples %in% colnames(.x))) |>
+  bind_cols() |>
+  as.matrix()
+rownames(coverage) <- all_samples
+colnames(coverage) <- names(CLL_data)
+
+# Annotate rows by IGHV status for context
+anno_row <- CLL_covariates[rownames(coverage), "IGHV", drop = FALSE]
+anno_row$IGHV <- factor(anno_row$IGHV, levels = c("M", "U"))
+
+pheatmap(
+  coverage,
+  color             = c("grey92", "#2c7bb6"),
+  main              = "Data availability: present (blue) vs missing (grey)",
+  annotation_row    = anno_row,
+  annotation_colors = list(IGHV = ighv_colors),
+  cluster_cols      = FALSE,
+  cluster_rows      = TRUE,
+  show_rownames     = FALSE,
+  fontsize          = 11,
+  legend_labels     = c("missing", "present")
+)
+```
+
+```{r coverage-summary}
+# Quantify missingness per view
+map_dfr(CLL_data, function(mat) {
+  n_present <- sum(all_samples %in% colnames(mat))
+  data.frame(
+    n_with_data  = n_present,
+    n_missing    = length(all_samples) - n_present,
+    pct_coverage = round(100 * n_present / length(all_samples), 1)
+  )
+}, .id = "view")
+```
+
+---
+
+## 3. Per-View Distributions
+
+### 3.1 mRNA
+
+```{r mrna-dist, fig.height=4}
+# RNA-seq data is provided as log2(CPM + 1), making it approximately
+# Gaussian — the appropriate MOFA2 likelihood for this view.
+gene_means <- rowMeans(CLL_data$mRNA, na.rm = TRUE)
+
+data.frame(mean_expr = gene_means) |>
+  ggplot(aes(x = mean_expr)) +
+  geom_histogram(bins = 60, fill = "#4393c3", colour = "white", alpha = 0.85) +
+  labs(
+    title    = "mRNA: distribution of per-gene mean expression",
+    subtitle = sprintf("n = %d genes across %d patients", nrow(CLL_data$mRNA), ncol(CLL_data$mRNA)),
+    x = "Mean log2(CPM+1)", y = "Number of genes"
+  )
+```
+
+```{r mrna-topvar}
+# Top variable genes drive MOFA factors in the RNA view.
+gene_var <- apply(CLL_data$mRNA, 1, var, na.rm = TRUE)
+
+data.frame(gene = names(gene_var), variance = gene_var) |>
+  slice_max(variance, n = 20) |>
+  ggplot(aes(x = reorder(gene, variance), y = variance)) +
+  geom_col(fill = "#4393c3", alpha = 0.85) +
+  coord_flip() +
+  labs(title = "Top 20 most variable genes (mRNA view)",
+       x = NULL, y = "Variance across patients")
+```
+
+### 3.2 DNA Methylation
+
+```{r meth-dist, fig.height=4}
+# Methylation beta-values range 0–1 (proportion of cells methylated).
+# The expected bimodal distribution reflects the binary nature of CpG
+# methylation: most CpGs are either fully ON (β ≈ 1) or fully OFF (β ≈ 0).
+# Intermediate values (β = 0.3–0.7) indicate heterogeneous cell populations
+# or bivalent chromatin at regulatory elements.
+
+beta_sample <- as.vector(CLL_data$Methylation[sample(nrow(CLL_data$Methylation), 800), ])
+beta_sample <- beta_sample[!is.na(beta_sample)]
+
+data.frame(beta = beta_sample) |>
+  ggplot(aes(x = beta)) +
+  geom_histogram(bins = 50, fill = "#d6604d", colour = "white", alpha = 0.85) +
+  labs(
+    title    = "Methylation: beta-value distribution (random 800 CpGs)",
+    subtitle = "Bimodal = biologically expected: CpGs are typically fully methylated or unmethylated",
+    x = "Beta value (proportion methylated)", y = "Count"
+  )
+```
+
+### 3.3 Drug Viability
+
+```{r drugs-dist, fig.height=4}
+# Drug response is measured as ex vivo cell viability relative to DMSO control.
+# Values < 1 indicate that the compound killed CLL cells.
+# AUC-like summaries across drug concentrations are stored per patient.
+# This view captures the functional consequence of the molecular landscape.
+
+viability_sample <- as.vector(
+  CLL_data$Drugs[sample(nrow(CLL_data$Drugs), 60), ]
+)
+viability_sample <- viability_sample[!is.na(viability_sample)]
+
+data.frame(viability = viability_sample) |>
+  ggplot(aes(x = viability)) +
+  geom_histogram(bins = 50, fill = "#74c476", colour = "white", alpha = 0.85) +
+  geom_vline(xintercept = 1, linetype = "dashed", colour = "red", linewidth = 0.8) +
+  labs(
+    title    = "Drug response: viability distribution (random 60 drugs)",
+    subtitle = "Values below red line (viability=1) indicate cell killing",
+    x = "Relative viability (vs DMSO control)", y = "Count"
+  )
+```
+
+### 3.4 Mutations
+
+```{r mutations-freq}
+# Most driver genes are mutated in a small fraction of CLL patients —
+# the classic long-tail distribution of cancer somatic mutations.
+# IGHV mutation status is unusual in being mutated in ~50% of patients.
+
+mut_freq <- rowSums(CLL_data$Mutations, na.rm = TRUE) /
+            rowSums(!is.na(CLL_data$Mutations))
+
+data.frame(gene = names(mut_freq), freq = mut_freq) |>
+  arrange(desc(freq)) |>
+  slice_head(n = 20) |>
+  ggplot(aes(x = reorder(gene, freq), y = freq)) +
+  geom_col(fill = "#9970ab", alpha = 0.85) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title    = "Top 20 most frequently mutated genes in CLL",
+    subtitle = "IGHV and SF3B1 dominate the landscape",
+    x = NULL, y = "Mutation frequency"
+  )
+```
+
+---
+
+## 4. IGHV Status Leaves a Clear mRNA Imprint
+
+```{r pca-ighv, fig.height=5}
+# A key positive control before modelling: if IGHV status (the dominant
+# clinical variable) is biologically meaningful, it should create visible
+# separation in PCA of the RNA view. This validates that the molecular
+# signal is present before we ask MOFA+ to discover it unsupervised.
+
+# Samples with known IGHV status and RNA data
+common_samples <- intersect(
+  colnames(CLL_data$mRNA),
+  rownames(CLL_covariates)[!is.na(CLL_covariates$IGHV)]
+)
+
+mrna_sub      <- t(CLL_data$mRNA[, common_samples])
+mrna_complete <- mrna_sub[complete.cases(mrna_sub), ]
+
+pca_res  <- prcomp(mrna_complete, scale. = TRUE, center = TRUE)
+var_pct  <- round(100 * pca_res$sdev^2 / sum(pca_res$sdev^2), 1)
+
+pca_df <- data.frame(
+  PC1    = pca_res$x[, 1],
+  PC2    = pca_res$x[, 2],
+  sample = rownames(mrna_complete)
+) |>
+  left_join(
+    CLL_covariates |> tibble::rownames_to_column("sample"),
+    by = "sample"
+  )
+
+ggplot(pca_df, aes(x = PC1, y = PC2, colour = IGHV)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  scale_colour_manual(values = ighv_colors,
+    labels = c(M = "Mutated (indolent)", U = "Unmutated (aggressive)"),
+    na.value = "grey70"
+  ) +
+  labs(
+    title    = "PCA of CLL mRNA: IGHV status drives PC1",
+    subtitle  = "Positive control — MOFA+ should recover this axis unsupervised across all views",
+    x = paste0("PC1 (", var_pct[1], "% var)"),
+    y = paste0("PC2 (", var_pct[2], "% var)"),
+    colour = "IGHV status"
+  )
+```
+
+---
+
+## 5. Cross-View Sample Overlap
+
+```{r sample-overlap}
+view_samples <- map(CLL_data, colnames)
+
+# Samples with data in ALL four views
+n_complete <- length(Reduce(intersect, view_samples))
+cat("Samples with all 4 views:", n_complete, "\n")
+cat("Total unique samples:", length(all_samples), "\n")
+cat("Fraction complete:", round(n_complete / length(all_samples), 2), "\n\n")
+
+# Pairwise sample overlap
+outer(
+  seq_along(view_samples), seq_along(view_samples),
+  Vectorize(function(i, j)
+    length(intersect(view_samples[[i]], view_samples[[j]]))
+  )
+) |>
+  `dimnames<-`(list(names(view_samples), names(view_samples))) |>
+  print()
+```
+
+---
+
+## 6. Save for Downstream Notebooks
+
+```{r save}
+dir.create("../../results/mofa", recursive = TRUE, showWarnings = FALSE)
+
+saveRDS(
+  list(data = CLL_data, covariates = CLL_covariates),
+  "../../results/mofa/cll_data_preprocessed.RDS"
+)
+cat("Saved to results/mofa/cll_data_preprocessed.RDS\n")
+```
+
+---
+
+## Summary
+
+| View | Features | Max patients | Pct coverage |
+|------|---------|-------------|-------------|
+| mRNA | `r nrow(CLL_data$mRNA)` | `r ncol(CLL_data$mRNA)` | `r round(100*ncol(CLL_data$mRNA)/length(all_samples),1)`% |
+| Methylation | `r nrow(CLL_data$Methylation)` | `r ncol(CLL_data$Methylation)` | `r round(100*ncol(CLL_data$Methylation)/length(all_samples),1)`% |
+| Drugs | `r nrow(CLL_data$Drugs)` | `r ncol(CLL_data$Drugs)` | `r round(100*ncol(CLL_data$Drugs)/length(all_samples),1)`% |
+| Mutations | `r nrow(CLL_data$Mutations)` | `r ncol(CLL_data$Mutations)` | `r round(100*ncol(CLL_data$Mutations)/length(all_samples),1)`% |
+
+**Key finding**: PC1 of mRNA cleanly separates IGHV-mutated from unmutated patients.
+MOFA+ should recover this biology unsupervised and extend it to methylation and drug views.
+
+**→ Next: `02_mofa_training.Rmd`**

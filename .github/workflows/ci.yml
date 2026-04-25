@@ -1,0 +1,102 @@
+name: CI — Execute Notebooks
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  execute-notebooks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Conda environment ────────────────────────────────────────────────────
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: multiomics-demo
+          environment-file: environment.yml
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          use-mamba: true
+
+      # Cache Bioconductor source builds (slow on first run, ~20 min)
+      - name: Cache R library
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/R/site-library
+          key: r-bioc-${{ hashFiles('setup.R') }}-${{ runner.os }}
+
+      - name: Install Bioconductor packages
+        shell: bash -el {0}
+        run: Rscript setup.R
+
+      - name: Register R kernel
+        shell: bash -el {0}
+        run: Rscript -e "IRkernel::installspec(name='ir', displayname='R')"
+
+      # ── System libraries needed by R packages ────────────────────────────────
+      - name: Install system libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libhdf5-dev libxml2-dev libcurl4-openssl-dev libssl-dev \
+            libcairo2-dev libharfbuzz-dev libfribidi-dev \
+            libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
+
+      # ── MOFA+ notebooks (fast, ~5 min total) ─────────────────────────────────
+      - name: Execute MOFA+ notebooks
+        shell: bash -el {0}
+        run: |
+          mkdir -p notebooks/executed
+          for nb in notebooks/01_mofa_cll/0{1,2,3,4}_*.ipynb; do
+            echo "▶ $nb"
+            papermill "$nb" "notebooks/executed/$(basename $nb)" --kernel ir
+          done
+
+      # ── DIABLO EDA notebook (fast, no CV) ────────────────────────────────────
+      - name: Execute DIABLO EDA notebook
+        shell: bash -el {0}
+        run: |
+          papermill notebooks/02_diablo_brca/01_data_loading_eda.ipynb \
+                    notebooks/executed/diablo_01_data_loading_eda.ipynb \
+                    --kernel ir
+
+      # ── DIABLO training notebooks (slow CV — skipped in CI) ──────────────────
+      # notebooks/02_diablo_brca/02_single_omics_baseline.ipynb   ~15 min
+      # notebooks/02_diablo_brca/03_diablo_integration.ipynb      ~45 min
+      # notebooks/02_diablo_brca/04_biomarker_interpretation.ipynb ~5 min
+      # Run locally or in Docker. Set FORCE_TUNE=FALSE in the notebooks
+      # to reuse cached RDS files if results/ is pre-populated.
+      - name: Note — DIABLO CV notebooks skipped
+        run: echo "DIABLO CV notebooks (02-04) skipped in CI due to compute time. Run locally."
+
+      # ── Save key figures ──────────────────────────────────────────────────────
+      - name: Save summary figures
+        shell: bash -el {0}
+        run: Rscript scripts/save_figures.R
+        continue-on-error: true   # don't fail CI if figure saving has issues
+
+      # ── Upload artifacts ──────────────────────────────────────────────────────
+      - name: Upload executed notebooks
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: executed-notebooks
+          path: notebooks/executed/
+          retention-days: 30
+
+      - name: Upload figures
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: figures
+          path: |
+            results/mofa/figures/
+            results/diablo/figures/
+          retention-days: 30
