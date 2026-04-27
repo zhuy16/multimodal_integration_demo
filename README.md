@@ -269,8 +269,10 @@ and drug response (BTK inhibitor sensitivity).
 
 ### Analysis 2: Breast Cancer Subtyping (DIABLO)
 
-PAM50 breast cancer subtypes (Basal, HER2-enriched, Luminal A/B) have distinct prognosis
-and respond to different therapies. Clinical subtyping currently relies on
+PAM50 breast cancer subtypes have distinct prognosis and respond to different therapies.
+This demo uses the pre-selected `breast.TCGA` subset from `mixOmics`, which contains
+three labels only: Basal, Her2, and LumA. `LumA` here is the actual Luminal A class,
+not a combined Luminal A/B group. Clinical subtyping currently relies on
 IHC (ER, PR, HER2, Ki67) — a proxy for the underlying molecular programme.
 Multi-omics integration offers the possibility of a more robust, multi-layer classifier.
 

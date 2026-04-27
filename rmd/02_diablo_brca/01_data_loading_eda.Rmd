@@ -21,15 +21,15 @@ knitr::opts_chunk$set(
 ## Biological Background
 
 The **PAM50 intrinsic subtypes** are the clinical standard for molecular classification
-of breast cancer. They represent four biologically distinct diseases sharing one anatomical
-site, each requiring different treatment:
+of breast cancer. The full taxonomy is broader, but the `breast.TCGA` demo subset used
+here contains three labels only: Basal, Her2, and LumA. `LumA` here is the actual
+Luminal A class, not a merged Luminal A/B group:
 
 | Subtype | ER | HER2 | Key biology | Standard treatment |
 |---------|----|------|------------|-------------------|
 | Basal-like | − | − | TP53 mutations, BRCA1-like, high proliferation | Chemotherapy |
 | HER2-enriched | − | + | ERBB2 amplification (17q12) | Trastuzumab + chemo |
 | Luminal A | + | − | ESR1/FOXA1-driven, low proliferation | Endocrine therapy only |
-| Luminal B | + | +/− | High proliferation, CDK4/6 dysregulation | Endocrine + CDK4/6 inhibitor |
 
 The `breast.TCGA` dataset from the **mixOmics** package provides three omics layers
 for 150 training samples across three subtypes (Basal, Her2, LumA):
