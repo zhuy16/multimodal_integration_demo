@@ -29,8 +29,11 @@ Dietrich S et al. (2018). Drug-perturbation-based stratification of blood cancer
 
 **Data access**: Included in MOFA2 ≥ 1.0 via `data("CLL_data")`.
 
-**Missing data**: Not all patients have all four views profiled. MOFA+ handles
-this natively via variational inference over missing observations.
+**Missing data**: MOFA+ handles samples that lack one or more views natively via
+variational inference — no imputation required. The CLL_data object bundled with
+MOFAdata has been pre-curated to a 200-sample complete-case intersection, so all
+four views are present for every patient in this demo. In real-world cohorts you
+would typically see partial coverage (grey cells in the availability heatmap).
 
 ---
 
@@ -51,11 +54,17 @@ data(breast.TCGA)
   - `$subtype`: PAM50 label (factor: Basal, Her2, LumA)
 - **breast.TCGA$data.test**: Test set (70 samples, same structure)
   - The train/test split is pre-defined by mixOmics to prevent data leakage
+  - In this split, proteomics is not provided for test samples (mRNA + miRNA only)
 
 **Original data source**: The Cancer Genome Atlas (TCGA) Breast Invasive Carcinoma
 (BRCA) project. Data downloaded and pre-processed by the mixOmics team.
 
 **Data access**: Included in mixOmics ≥ 6.0 via `data(breast.TCGA)`.
+
+**Missingness note (important)**:
+- Value-level missingness (`NA` entries) can be low within available block matrices.
+- Block-level missingness is still present: the proteomics view is absent for all test samples.
+- These are different concepts and should be reported separately in diagnostics.
 
 **Note**: The original TCGA BRCA cohort contains all five PAM50 subtypes.
 This pre-selected subset retains Basal, Her2, and LumA for demonstration purposes.

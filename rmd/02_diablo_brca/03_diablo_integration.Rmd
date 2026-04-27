@@ -375,10 +375,10 @@ single_omics_acc <- baseline_res$test_results |>
 
 bind_rows(
   single_omics_acc,
-  data.frame(block = "DIABLO (weighted vote)", overall_acc = overall_acc)
+  data.frame(block = "DIABLO (mRNA + miRNA, weighted vote)", overall_acc = overall_acc)
 ) |>
   ggplot(aes(x = reorder(block, overall_acc), y = overall_acc,
-             fill = block == "DIABLO (weighted vote)")) +
+             fill = block == "DIABLO (mRNA + miRNA, weighted vote)")) +
   geom_col(show.legend = FALSE, alpha = 0.85) +
   geom_text(aes(label = sprintf("%.1f%%", 100 * overall_acc)),
             hjust = -0.1, size = 3.5) +
@@ -387,7 +387,7 @@ bind_rows(
   scale_fill_manual(values = c("FALSE" = "#4393c3", "TRUE" = "#d73027")) +
   labs(
     title    = "Test accuracy: DIABLO vs single-omics baselines",
-    subtitle = "DIABLO (red) should outperform all individual blocks",
+    subtitle = "DIABLO (red) uses available test blocks (mRNA + miRNA)",
     x = NULL, y = "Accuracy (test set)"
   )
 ```
@@ -422,10 +422,10 @@ cat("Final model saved.\n")
 | mRNA only | `r sprintf("%.1f%%", 100*baseline_ber["mRNA"])` | `r sprintf("%.1f%%", 100*baseline_res$test_results$overall_acc[baseline_res$test_results$block=="mRNA"])` |
 | miRNA only | `r sprintf("%.1f%%", 100*baseline_ber["miRNA"])` | `r sprintf("%.1f%%", 100*baseline_res$test_results$overall_acc[baseline_res$test_results$block=="miRNA"])` |
 | proteomics only | `r sprintf("%.1f%%", 100*baseline_ber["proteomics"])` | `r sprintf("%.1f%%", 100*baseline_res$test_results$overall_acc[baseline_res$test_results$block=="proteomics"])` |
-| **DIABLO (all 3)** | **`r if(exists('cv_ber')) sprintf("%.1f%%", 100*cv_ber) else "—"`** | **`r sprintf("%.1f%%", 100*overall_acc)`** |
+| **DIABLO (mRNA + miRNA weighted vote on test set)** | **`r if(exists('cv_ber')) sprintf("%.1f%%", 100*cv_ber) else "—"`** | **`r sprintf("%.1f%%", 100*overall_acc)`** |
 
-**Key conclusion**: Multi-omics integration with DIABLO outperforms every single-omics baseline,
-demonstrating that mRNA, miRNA, and proteomics carry **complementary, non-redundant** information
-about PAM50 subtype identity.
+**Key conclusion**: In this dataset split, test-time DIABLO evaluation uses the available
+blocks (mRNA + miRNA) and outperforms either single-omics baseline. This supports the
+value of integrating complementary cross-omics signal.
 
 **→ Next: `04_biomarker_interpretation.Rmd`**

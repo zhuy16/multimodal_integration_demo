@@ -36,8 +36,11 @@ patients from the same cohort, making it ideal for multi-omics integration:
 | Drugs | Ex vivo viability assays | 310 compounds | Drug sensitivity phenotype |
 | Mutations | WES binary calls | 69 driver genes | Somatic alterations |
 
-A critical challenge: **not every patient was profiled on every platform** — MOFA+ is
-specifically designed to handle this incomplete-data structure.
+A key strength: MOFA+ handles **incomplete multi-omics data** where patients lack one or
+more views. The CLL_data object used here has been pre-curated to a 200-sample
+complete-case intersection, so all four views are present for every patient — the
+availability heatmap will appear entirely blue. In real-world cohorts you would
+typically see partial coverage (grey cells).
 
 **Biological question**: What molecular signatures across mRNA, methylation, and drug response
 explain CLL patient heterogeneity and treatment response?
@@ -110,6 +113,18 @@ table(CLL_covariates$IGHV)
 # assays were performed on all patients, often for logistical reasons.
 # MOFA+ marginalises over missing observations during ELBO optimisation,
 # so no imputation is needed.
+#
+# NOTE: the CLL_data bundled with MOFAdata has been curated to a complete
+# 200-sample intersection (all four views present for every patient), so the
+# heatmap below will appear entirely blue — that is the correct result for
+# this particular dataset. In your own cohorts you would typically see grey
+# cells where samples lack one or more views.
+#
+# NOTE: the CLL_data bundled with MOFAdata has been curated to a complete
+# 200-sample intersection (all four views present for every patient), so the
+# heatmap below will appear entirely blue — that is the correct result for
+# this particular dataset. In your own cohorts you would typically see grey
+# cells where samples lack one or more views.
 
 all_samples <- unique(unlist(map(CLL_data, colnames)))
 

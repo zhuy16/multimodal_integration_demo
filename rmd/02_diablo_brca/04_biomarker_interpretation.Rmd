@@ -290,7 +290,8 @@ network(
 
 ```{r block-contribution, fig.height=4}
 # Compare per-block test accuracy to show the contribution of each
-# omics layer. The weighted vote should outperform all individual blocks.
+# available test omics layer. The weighted vote should outperform
+# individual available blocks.
 
 block_acc <- map_dfr(names(results$test_pred$predict), function(block) {
   preds   <- results$test_pred$predict[[block]][, ncomp]
@@ -316,7 +317,7 @@ ggplot(block_acc, aes(x = reorder(block, accuracy), y = accuracy,
   scale_fill_manual(values = c("FALSE" = "#4393c3", "TRUE" = "#d73027")) +
   labs(
     title    = "Test accuracy per DIABLO block",
-    subtitle = "Weighted vote (red) integrates evidence across all blocks",
+    subtitle = "Weighted vote (red) integrates available test blocks",
     x = NULL, y = "Accuracy"
   )
 ```

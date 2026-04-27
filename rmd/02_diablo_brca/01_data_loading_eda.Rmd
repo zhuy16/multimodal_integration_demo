@@ -96,11 +96,11 @@ X_train <- list(
 )
 Y_train <- breast.TCGA$data.train$subtype
 
-# Test data — ONLY used for final evaluation in Notebook 3
+# Test data — ONLY used for final evaluation in Notebook 3.
+# NOTE: this split provides mRNA + miRNA only; proteomics is not available.
 X_test <- list(
   mRNA       = breast.TCGA$data.test$mrna,
-  miRNA      = breast.TCGA$data.test$mirna,
-  proteomics = breast.TCGA$data.test$proteomics
+  miRNA      = breast.TCGA$data.test$mirna
 )
 Y_test <- breast.TCGA$data.test$subtype
 
@@ -108,14 +108,69 @@ cat("Training dimensions:\n")
 map(X_train, dim) |> bind_rows(.id = "block") |>
   setNames(c("block", "n_samples", "n_features")) |> print()
 
-cat("\nTest dimensions:\n")
+cat("\nTest dimensions (proteomics not available in test split):\n")
 map(X_test, dim) |> bind_rows(.id = "block") |>
   setNames(c("block", "n_samples", "n_features")) |> print()
 ```
 
 ---
 
-## 2. Class Balance
+## 2. Missingness Audit: NA Values vs Missing Views
+
+```{r missingness-audit}
+# Important distinction:
+# 1) Value-level missingness: NA entries INSIDE available block matrices
+# 2) Block-level missingness: an entire omics view absent for some samples
+
+na_train <- map_dfr(names(X_train), function(block) {
+  m <- X_train[[block]]
+  data.frame(
+    block = block,
+    set = "Train",
+    samples = nrow(m),
+    features = ncol(m),
+    na_count = sum(is.na(m)),
+    na_pct = 100 * mean(is.na(m))
+  )
+})
+
+na_test <- map_dfr(names(X_test), function(block) {
+  m <- X_test[[block]]
+  data.frame(
+    block = block,
+    set = "Test",
+    samples = nrow(m),
+    features = ncol(m),
+    na_count = sum(is.na(m)),
+    na_pct = 100 * mean(is.na(m))
+  )
+})
+
+na_summary <- bind_rows(na_train, na_test)
+print(na_summary)
+
+all_blocks <- names(X_train)
+block_availability <- data.frame(
+  block = all_blocks,
+  train_available = all_blocks %in% names(X_train),
+  test_available = all_blocks %in% names(X_test)
+) |>
+  mutate(
+    missing_views_in_test = !test_available,
+    missing_pct_in_test = ifelse(missing_views_in_test, 100, 0)
+  )
+
+cat("\nBlock-level availability:\n")
+print(block_availability)
+
+cat("\nInterpretation:\n")
+cat("- NA counts can be near-zero inside available matrices.\n")
+cat("- Proteomics is still missing at block level in the test split (entire view unavailable).\n")
+```
+
+---
+
+## 3. Class Balance
 
 ```{r class-balance, fig.height=4}
 # Class imbalance causes biased classifiers. Check the distribution
@@ -143,7 +198,7 @@ bind_rows(
 
 ---
 
-## 3. Per-View Distributions
+## 4. Per-View Distributions
 
 ### 3.1 mRNA
 
@@ -235,7 +290,7 @@ data.frame(protein = names(prot_var), variance = prot_var) |>
 
 ---
 
-## 4. Single-View PCA per Subtype
+## 5. Single-View PCA per Subtype
 
 ```{r pca-per-view, fig.height=4}
 # PCA per view shows how well each single omic layer separates subtypes.
@@ -273,7 +328,7 @@ ggplot(pca_df, aes(x = PC1, y = PC2, colour = subtype)) +
 
 ---
 
-## 5. Known PAM50 Marker Validation
+## 6. Known PAM50 Marker Validation
 
 ```{r marker-validation, fig.height=5}
 # Verify data quality: known PAM50 marker genes should show expected
@@ -320,7 +375,7 @@ if (length(known_genes) >= 2) {
 
 ---
 
-## 6. Cross-View Correlation Structure
+## 7. Cross-View Correlation Structure
 
 ```{r cross-view-correlation, fig.height=4}
 # Pearson correlation between PC1 of each view.
@@ -348,7 +403,7 @@ corrplot(
 
 ---
 
-## 7. Save Processed Data
+## 8. Save Processed Data
 
 ```{r save}
 dir.create("../../results/diablo", recursive = TRUE, showWarnings = FALSE)
@@ -370,13 +425,15 @@ cat("Saved to results/diablo/breast_TCGA_processed.RDS\n")
 |-------|---------|--------------|-------------|
 | mRNA | `r ncol(X_train$mRNA)` | `r nrow(X_train$mRNA)` | `r nrow(X_test$mRNA)` |
 | miRNA | `r ncol(X_train$miRNA)` | `r nrow(X_train$miRNA)` | `r nrow(X_test$miRNA)` |
-| proteomics | `r ncol(X_train$proteomics)` | `r nrow(X_train$proteomics)` | `r nrow(X_test$proteomics)` |
+| proteomics | `r ncol(X_train$proteomics)` | `r nrow(X_train$proteomics)` | 0 (not in test split) |
 
 **Subtype counts (train)**: `r paste(names(table(Y_train)), table(Y_train), sep="=", collapse=", ")`
 
 **Key EDA observations**:
 - All three views show partial but imperfect subtype separation in PCA
 - mRNA gives the clearest Basal vs Luminal split; miRNA and proteomics add orthogonal signal
+- Value-level missingness is minimal within available matrices
+- Proteomics has block-level missingness in test data (entire block unavailable)
 - No severe class imbalance; DIABLO should train fairly across subtypes
 - Known PAM50 markers (ESR1, ERBB2, Ki67) show expected expression patterns → data quality confirmed
 

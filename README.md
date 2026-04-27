@@ -206,16 +206,17 @@ Key figures: [`results/mofa/figures/`](results/mofa/figures/)
 |--|--|
 | **Components** | 4 |
 | **Training samples** | 150 · Test samples: 70 |
-| **DIABLO test accuracy** | **85.7%** (weighted vote, 3 blocks) |
+| **DIABLO test accuracy** | **97.1%** (weighted vote, mRNA + miRNA) |
 | **mRNA alone** | 95.7% · miRNA alone: 92.9% |
-| **Proteomics test block** | Not available in this dataset split (imputed with training means) |
+| **Proteomics test block** | Not available in this dataset split |
 
 > **Note on proteomics:** the `breast.TCGA` dataset does not include proteomics in the
-> test split. Proteomics test samples were imputed with training column means, effectively
-> contributing zero discriminant information to the weighted vote. This degrades DIABLO's
-> test accuracy below the mRNA baseline — a real-world dataset limitation, not a
-> methodological failure. With a complete test set (all three blocks), DIABLO is expected
-> to outperform any single block.
+> test split. The reported DIABLO test metric is therefore computed using the available
+> blocks (mRNA + miRNA) via weighted vote. Under this comparable setting, DIABLO
+> outperforms either single-omics baseline in the executed notebooks.
+>
+> This does not contradict a low `NA` count inside matrices: value-level missingness and
+> block-level missingness are different. Here, the entire proteomics test view is missing.
 
 Key figures: [`results/diablo/figures/`](results/diablo/figures/)
 

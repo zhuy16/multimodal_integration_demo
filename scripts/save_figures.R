@@ -102,11 +102,11 @@ single_acc <- bl_res$test_results |>
 
 acc_df <- bind_rows(
   single_acc,
-  data.frame(block = "DIABLO (multi-omics)", overall_acc = res$overall_acc)
+  data.frame(block = "DIABLO (mRNA + miRNA)", overall_acc = res$overall_acc)
 )
 
 p4 <- ggplot(acc_df, aes(x = reorder(block, overall_acc), y = overall_acc,
-                          fill = block == "DIABLO (multi-omics)")) +
+                          fill = block == "DIABLO (mRNA + miRNA)")) +
   geom_col(show.legend = FALSE, alpha = 0.85) +
   geom_text(aes(label = sprintf("%.1f%%", 100 * overall_acc)),
             hjust = -0.1, size = 4) +
@@ -114,7 +114,7 @@ p4 <- ggplot(acc_df, aes(x = reorder(block, overall_acc), y = overall_acc,
   scale_y_continuous(labels = scales::percent, limits = c(0, 1.15)) +
   scale_fill_manual(values = c("FALSE" = "#4393c3", "TRUE" = "#d73027")) +
   labs(title = "DIABLO: Test accuracy vs single-omics baselines",
-       subtitle = paste0("Note: proteomics test data unavailable; mRNA block leads single-omics"),
+      subtitle = paste0("Weighted vote over available test blocks (mRNA + miRNA)"),
        x = NULL, y = "Test accuracy")
 
 ggsave("results/diablo/figures/test_accuracy_comparison.png",
