@@ -30,7 +30,8 @@ bioc_pkgs <- c(
   "MOFAdata",      # contains CLL_data and CLL_covariates
   "MOFA2",         # multi-omics factor analysis
   "mixOmics",      # DIABLO and breast.TCGA dataset
-  "limma"          # used internally by mixOmics
+  "limma",         # used internally by mixOmics
+  "org.Hs.eg.db"   # Ensembl ID → gene symbol mapping for mRNA annotation
 )
 
 missing <- bioc_pkgs[!bioc_pkgs %in% rownames(installed.packages())]
