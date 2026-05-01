@@ -3,6 +3,8 @@
 Two end-to-end multi-omics integration analyses demonstrating complementary methodologies
 for unsupervised and supervised integration, using real public datasets bundled in R packages.
 
+![Multimodal integration overview](docs/multimodal_illustration.png)
+
 ---
 
 ## Analyses
